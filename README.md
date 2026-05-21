@@ -222,6 +222,52 @@ go test ./...
 go test -bench=. -benchmem -benchtime=5s ./...
 ```
 
+## Comparison with Other Libraries
+
+Benchmark source: [donge/xmlbench](https://github.com/donge/xmlbench)  
+Hardware: Apple M4 · Go 1.22 · input: real-world business XML (~900 B, medium complexity, with attributes + nested elements + repeated children)
+
+### XML → JSON only
+
+| Library | ns/op | B/op | allocs/op | vs fastxml |
+|---|---|---|---|---|
+| [basgys/goxml2json](https://github.com/basgys/goxml2json) (baseline) | ~9,800 | ~8,400 | 174 | 18× slower |
+| goxml2json (optimized, pooled) | ~1,100 | ~2,100 | 18 | 2× slower |
+| [orisano/gosax](https://github.com/orisano/gosax) (stream) | ~780 | ~66,000 | 5 | 1.4× slower, 70× more B/op |
+| [clbanning/mxj/v2](https://github.com/clbanning/mxj) | ~12,000 | ~12,800 | 210 | 22× slower |
+| **fastxml** | **~545** | **~896** | **1** | — |
+
+### End-to-end: gzip decompress + XML → JSON
+
+| Library | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| goxml2json (baseline) | ~17,200 | ~9,700 | 185 |
+| goxml2json (optimized) | ~7,400 | ~3,400 | 29 |
+| gosax | ~7,100 | ~67,300 | 16 |
+| mxj/v2 | ~19,500 | ~14,100 | 221 |
+| **fastxml** | **~6,800** | **~2,200** | **12** |
+
+> **Note:** In the end-to-end case, gzip decompression (~6 µs) dominates total time. fastxml's XML→JSON step takes only ~300 ns — so switching the XML library alone trims ~4% of total latency; the bigger wins come from pooling the gzip reader (~15% CPU saved) and other pipeline optimizations.
+
+### Why fastxml wins
+
+| Factor | Other libraries | fastxml |
+|---|---|---|
+| Intermediate representation | `map[string]interface{}` (mxj), DOM tree with allocs | Slab-allocated Value tree, all strings are sub-slices |
+| String copies | Multiple per node | 1 (input copy into `p.b`), zero thereafter |
+| Entity unescaping | Eager, always allocates | Lazy; skipped entirely if no `&` present |
+| Repeated elements | Collected into slices post-parse | Promoted to TypeArray in O(1) during parse |
+| JSON serialization | `encoding/json` on intermediate map | Direct `MarshalTo` append, no reflection |
+| Allocation pattern | Hundreds of small heap objects | Two growing slabs, steady-state 0–1 allocs/op |
+
+Reproduce:
+
+```bash
+git clone https://github.com/donge/xmlbench
+cd xmlbench
+go test -bench='Xml2Json|DecompressThen' -benchmem ./...
+```
+
 ## License
 
 MIT
