@@ -143,6 +143,15 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 		return c.parseCDATA(s[9:])
 	}
 
+	// skip <!DOCTYPE ...> and any other <!...> declarations (not CDATA, not comments)
+	if len(s) >= 2 && s[1] == '!' {
+		rest, err := skipBangDecl(s[2:])
+		if err != nil {
+			return nil, s, err
+		}
+		return c.parseElement(rest, depth)
+	}
+
 	// open tag
 	s = s[1:] // consume '<'
 	tagName, s, err := scanName(s)
@@ -310,4 +319,25 @@ func appendChildWithArrayPromotion(c *cache, parent *Value, ch *Value) {
 		}
 	}
 	parent.children = append(parent.children, ch)
+}
+
+// skipBangDecl skips <!...> declarations such as <!DOCTYPE ...>.
+// s is the content after "<!". Handles nested brackets for internal subsets.
+func skipBangDecl(s string) (string, error) {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		case '>':
+			if depth == 0 {
+				return s[i+1:], nil
+			}
+		}
+	}
+	return s, fmt.Errorf("fastxml: unclosed <!declaration>")
 }
