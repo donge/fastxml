@@ -123,3 +123,25 @@ func encodeUTF8(p []byte, r rune) int {
 		return 4
 	}
 }
+
+// localName strips the namespace prefix ("prefix:local" → "local").
+// Zero-alloc: returns a sub-slice of the input.
+func localName(name string) string {
+	if i := strings.IndexByte(name, ':'); i >= 0 {
+		return name[i+1:]
+	}
+	return name
+}
+
+// trimSpace trims leading and trailing XML whitespace from s.
+func trimSpace(s string) string {
+	start := 0
+	for start < len(s) && isSpace(s[start]) {
+		start++
+	}
+	end := len(s)
+	for end > start && isSpace(s[end-1]) {
+		end--
+	}
+	return s[start:end]
+}

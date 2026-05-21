@@ -5,8 +5,8 @@ package fastxml
 // Convention differences between goxml2json and fastxml:
 //   Attribute prefix : goxml2json uses "-"   | fastxml uses "@"
 //   Text key         : goxml2json uses "#content" | fastxml uses "#text"
-//   Namespace prefix : goxml2json strips "prefix:" from tag names | fastxml keeps "prefix:local" verbatim
-//   Whitespace trim  : goxml2json trims leading/trailing whitespace from text | fastxml stores raw text
+//   Namespace prefix : both strip "prefix:" from tag names
+//   Whitespace trim  : both trim leading/trailing whitespace from text
 //   Type coercion    : goxml2json supports Int/Float/Bool/Null conversion | fastxml always outputs strings
 //   Charset          : goxml2json converts ISO-8859-1 via x/net/html/charset | fastxml is UTF-8 only
 //   Rootless XML     : goxml2json tolerates multiple root elements | fastxml requires a single root
@@ -159,10 +159,8 @@ func TestGoxml2json_Convert(t *testing.T) {
 	}
 }
 
-// [DIFF] TestConvertWithNewLines — goxml2json trims leading/trailing whitespace
-// and collapses internal whitespace sequences.
-// fastxml stores raw text; Text() does NOT trim.
-// This test documents fastxml's actual behaviour (raw preservation).
+// [PASS] TestConvertWithNewLines — fastxml now trims leading/trailing whitespace,
+// matching goxml2json's behaviour.
 func TestGoxml2json_WithNewLines(t *testing.T) {
 	s := `<?xml version="1.0" encoding="UTF-8"?>
   <osm>
@@ -184,21 +182,16 @@ func TestGoxml2json_WithNewLines(t *testing.T) {
 		t.Fatalf("expected foo string, got %T", osm["foo"])
 	}
 
-	// fastxml preserves the raw text including leading/trailing whitespace.
-	// goxml2json would return "foo\n\n\tbar" (trimmed).
-	// We just verify "foo" and "bar" are both present in the raw value.
+	// both fastxml and goxml2json trim surrounding whitespace; internal whitespace preserved.
 	if !strings.Contains(raw, "foo") || !strings.Contains(raw, "bar") {
 		t.Errorf("expected raw text to contain 'foo' and 'bar', got %q", raw)
 	}
-	t.Logf("DIFF: fastxml raw text = %q", raw)
-	t.Logf("DIFF: goxml2json would return trimmed = %q", "foo\n\n\tbar")
 }
 
-// [DIFF] TestConvertWithMixedTags — namespace prefixes.
-// goxml2json strips namespace prefixes: "soap-env:Envelope" → key "Envelope".
-// fastxml keeps prefixes verbatim: key "soap-env:Envelope".
-// xmlns attributes: goxml2json emits "-soap-env" (prefix only);
-// fastxml emits "@xmlns:soap-env" (full attribute name).
+// [PASS] TestConvertWithMixedTags — namespace prefixes.
+// Both goxml2json and fastxml now strip namespace prefixes from tag names.
+// fastxml keeps full xmlns attribute names ("@xmlns:soap-env");
+// goxml2json uses the prefix only ("-soap-env").
 func TestGoxml2json_WithMixedTags(t *testing.T) {
 	s := `<?xml version="1.0" encoding="UTF-8"?>
 	<soap-env:Envelope xmlns:soap-env="http://schemas.xmlsoap.org/soap/envelope/">
@@ -213,30 +206,30 @@ func TestGoxml2json_WithMixedTags(t *testing.T) {
 
 	m := mustParseMap(t, s)
 
-	// fastxml keeps the full prefixed tag name as the key
-	envelope, ok := m["soap-env:Envelope"].(map[string]any)
+	// fastxml strips prefix: "soap-env:Envelope" → key "Envelope" (same as goxml2json)
+	envelope, ok := m["Envelope"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected root key 'soap-env:Envelope' (fastxml keeps prefix); goxml2json uses 'Envelope'. got keys: %v", mapKeys(m))
+		t.Fatalf("expected root key 'Envelope' (prefix stripped), got keys: %v", mapKeys(m))
 	}
 
-	// xmlns attribute kept verbatim
+	// xmlns attribute kept verbatim (goxml2json uses '-soap-env' key)
 	if got, _ := envelope["@xmlns:soap-env"].(string); got != "http://schemas.xmlsoap.org/soap/envelope/" {
-		t.Errorf("@xmlns:soap-env = %q, want the namespace URI (goxml2json uses '-soap-env' key)", got)
+		t.Errorf("@xmlns:soap-env = %q, want the namespace URI", got)
 	}
 
-	header, ok := envelope["soap-env:Header"].(map[string]any)
+	header, ok := envelope["Header"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected 'soap-env:Header', got %T (goxml2json uses 'Header')", envelope["soap-env:Header"])
+		t.Fatalf("expected 'Header', got %T", envelope["Header"])
 	}
 
-	security, ok := header["wsse:Security"].(map[string]any)
+	security, ok := header["Security"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected 'wsse:Security', got %T (goxml2json uses 'Security')", header["wsse:Security"])
+		t.Fatalf("expected 'Security', got %T", header["Security"])
 	}
 
-	token, ok := security["wsse:BinarySecurityToken"].(map[string]any)
+	token, ok := security["BinarySecurityToken"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected 'wsse:BinarySecurityToken' object, got %T", security["wsse:BinarySecurityToken"])
+		t.Fatalf("expected 'BinarySecurityToken' object, got %T", security["BinarySecurityToken"])
 	}
 	if got, _ := token["@valueType"].(string); got != "String" {
 		t.Errorf("@valueType = %q, want String", got)
@@ -244,7 +237,6 @@ func TestGoxml2json_WithMixedTags(t *testing.T) {
 	if got, _ := token["@EncodingType"].(string); got != "wsse:Base64Binary" {
 		t.Errorf("@EncodingType = %q, want wsse:Base64Binary", got)
 	}
-	t.Logf("DIFF: fastxml keeps namespace prefixes in tag names; goxml2json strips them")
 }
 
 // [LIMIT] TestConvertISO — goxml2json converts ISO-8859-1 input to UTF-8 via

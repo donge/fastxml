@@ -68,7 +68,7 @@ func (c *cache) parseText(s string) (*Value, string) {
 	}
 	v := c.getValue()
 	v.t = TypeText
-	v.text = s[:i]
+	v.text = trimSpace(s[:i])
 	return v, s[i:]
 }
 
@@ -161,7 +161,7 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 
 	v := c.getValue()
 	v.t = TypeElement
-	v.name = tagName
+	v.name = localName(tagName)
 
 	// save the start of attrs in the slab so we can take a sub-slice
 	attrStart := len(c.as)
@@ -223,8 +223,8 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 			if err != nil {
 				return nil, s, fmt.Errorf("fastxml: invalid close tag: %w", err)
 			}
-			if closeName != tagName {
-				return nil, s, fmt.Errorf("fastxml: mismatched tags: open <%s> close </%s>", tagName, closeName)
+			if localName(closeName) != v.name {
+				return nil, s, fmt.Errorf("fastxml: mismatched tags: open <%s> close </%s>", v.name, closeName)
 			}
 			rest = skipWhitespace(rest)
 			if len(rest) == 0 || rest[0] != '>' {
