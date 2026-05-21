@@ -73,7 +73,33 @@ func (c *cache) parseText(s string) (*Value, string) {
 }
 
 // scanName returns the next name token (zero-copy sub-slice).
+// The returned name has any namespace prefix stripped ("prefix:local" → "local").
 func scanName(s string) (name, rest string, err error) {
+	i := 0
+	colon := -1
+	for i < len(s) {
+		c := s[i]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
+			c == '>' || c == '/' || c == '=' {
+			break
+		}
+		if c == ':' && colon < 0 {
+			colon = i
+		}
+		i++
+	}
+	if i == 0 {
+		return "", s, fmt.Errorf("fastxml: expected name, got %.10q", s)
+	}
+	full := s[:i]
+	if colon >= 0 && colon < i-1 {
+		return full[colon+1:], s[i:], nil
+	}
+	return full, s[i:], nil
+}
+
+// scanAttrName returns the next attribute name token verbatim (no prefix stripping).
+func scanAttrName(s string) (name, rest string, err error) {
 	i := 0
 	for i < len(s) {
 		c := s[i]
@@ -161,7 +187,7 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 
 	v := c.getValue()
 	v.t = TypeElement
-	v.name = localName(tagName)
+	v.name = tagName
 
 	// save the start of attrs in the slab so we can take a sub-slice
 	attrStart := len(c.as)
@@ -187,7 +213,7 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 		}
 		// attribute
 		a := c.getAttr()
-		a.name, s, err = scanName(s)
+		a.name, s, err = scanAttrName(s)
 		if err != nil {
 			return nil, s, fmt.Errorf("fastxml: invalid attribute name in <%s>: %w", tagName, err)
 		}
@@ -223,7 +249,7 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 			if err != nil {
 				return nil, s, fmt.Errorf("fastxml: invalid close tag: %w", err)
 			}
-			if localName(closeName) != v.name {
+			if closeName != v.name {
 				return nil, s, fmt.Errorf("fastxml: mismatched tags: open <%s> close </%s>", v.name, closeName)
 			}
 			rest = skipWhitespace(rest)

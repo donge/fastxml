@@ -134,7 +134,14 @@ func localName(name string) string {
 }
 
 // trimSpace trims leading and trailing XML whitespace from s.
+// Fast path: if first and last bytes are non-space, return s unchanged (zero alloc, zero scan).
 func trimSpace(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	if !isSpace(s[0]) && !isSpace(s[len(s)-1]) {
+		return s
+	}
 	start := 0
 	for start < len(s) && isSpace(s[start]) {
 		start++
