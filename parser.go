@@ -232,10 +232,6 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 	}
 	v.attrs = c.as[attrStart:]
 
-	// parse children
-	childPtrStart := len(c.vs) // not used directly but we manage via v.children
-	_ = childPtrStart
-
 	for {
 		s = skipWhitespace(s)
 		if len(s) == 0 {
@@ -295,11 +291,7 @@ func (c *cache) parseElement(s string, depth int) (*Value, string, error) {
 		ch := v.children[0]
 		if ch.t == TypeText || ch.t == TypeCDATA {
 			v.text = ch.text
-			if ch.t == TypeCDATA {
-				// mark that it was CDATA so Text() skips entity unescaping
-				// we reuse the text field; CDATA needs no unescaping
-				v.text = ch.text
-			}
+			v.rawText = ch.t == TypeCDATA
 			v.children = v.children[:0]
 		}
 	}

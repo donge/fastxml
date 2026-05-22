@@ -39,8 +39,9 @@ type Value struct {
 	name     string   // element tag name (sub-slice of Parser.b)
 	attrs    []attr   // attributes
 	children []*Value // child nodes
-	text     string   // TypeText/TypeCDATA raw content
+	text     string   // text content (raw; entities present unless rawText is set)
 	t        Type
+	rawText  bool     // true when text came from CDATA (no entity unescaping needed)
 }
 
 func (v *Value) reset() {
@@ -51,6 +52,7 @@ func (v *Value) reset() {
 	}
 	v.children = v.children[:0]
 	v.text = ""
+	v.rawText = false
 	v.t = TypeElement
 }
 
@@ -71,12 +73,14 @@ func (v *Value) Text() string {
 	case TypeText:
 		return unescapeXMLEntities(v.text)
 	case TypeCDATA:
-		return v.text // CDATA content is literal, no unescaping
+		return v.text
 	case TypeElement:
 		if len(v.children) == 0 {
+			if v.rawText {
+				return v.text
+			}
 			return unescapeXMLEntities(v.text)
 		}
-		// collect text from direct text children
 		var result []byte
 		for _, ch := range v.children {
 			if ch.t == TypeText {
@@ -207,10 +211,13 @@ func marshalElementValue(dst []byte, v *Value) []byte {
 		return dst
 	}
 
-	// Simple element: no attrs, single/only text content
+	// Simple element: no attrs, no children
 	if len(v.attrs) == 0 && len(v.children) == 0 {
 		if v.text == "" {
 			return append(dst, "null"...)
+		}
+		if v.rawText {
+			return appendJSONString(dst, v.text)
 		}
 		return appendJSONString(dst, unescapeXMLEntities(v.text))
 	}
@@ -271,6 +278,9 @@ func marshalElementValue(dst []byte, v *Value) []byte {
 
 func collectText(v *Value) string {
 	if len(v.children) == 0 {
+		if v.rawText {
+			return v.text
+		}
 		return unescapeXMLEntities(v.text)
 	}
 	var b []byte
