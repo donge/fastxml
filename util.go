@@ -18,6 +18,22 @@ func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
+// nameStop[c] is true for bytes that terminate an XML name token:
+// whitespace, '>', '/', '='.
+var nameStop [256]bool
+
+// spaceStop[c] is true for bytes that are NOT XML whitespace (used to skip whitespace).
+var spaceStop [256]bool
+
+func init() {
+	for _, c := range []byte(" \t\n\r>/=") {
+		nameStop[c] = true
+	}
+	for i := 0; i < 256; i++ {
+		spaceStop[i] = !(i == ' ' || i == '\t' || i == '\n' || i == '\r')
+	}
+}
+
 // appendJSONString appends a JSON-encoded string (with quotes) to dst.
 // Fast path: if s contains no characters that need escaping, copy directly.
 func appendJSONString(dst []byte, s string) []byte {

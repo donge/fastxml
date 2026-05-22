@@ -13,10 +13,12 @@ func skipBOM(s string) string {
 }
 
 func skipWhitespace(s string) string {
-	for len(s) > 0 && isSpace(s[0]) {
-		s = s[1:]
+	for i := 0; i < len(s); i++ {
+		if spaceStop[s[i]] {
+			return s[i:]
+		}
 	}
-	return s
+	return ""
 }
 
 // skipXMLDecl advances past <?xml ...?> if present.
@@ -73,46 +75,48 @@ func (c *cache) parseText(s string) (*Value, string) {
 }
 
 // scanName returns the next name token (zero-copy sub-slice).
-// The returned name has any namespace prefix stripped ("prefix:local" → "local").
+// Namespace prefix is stripped: "ns:local" → "local".
 func scanName(s string) (name, rest string, err error) {
-	i := 0
 	colon := -1
-	for i < len(s) {
+	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
-			c == '>' || c == '/' || c == '=' {
-			break
+		if nameStop[c] {
+			if i == 0 {
+				return "", s, fmt.Errorf("fastxml: expected name, got %.10q", s)
+			}
+			full := s[:i]
+			if colon >= 0 {
+				return full[colon+1:], s[i:], nil
+			}
+			return full, s[i:], nil
 		}
 		if c == ':' && colon < 0 {
 			colon = i
 		}
-		i++
 	}
-	if i == 0 {
+	if len(s) == 0 {
 		return "", s, fmt.Errorf("fastxml: expected name, got %.10q", s)
 	}
-	full := s[:i]
-	if colon >= 0 && colon < i-1 {
-		return full[colon+1:], s[i:], nil
+	if colon >= 0 && colon < len(s)-1 {
+		return s[colon+1:], "", nil
 	}
-	return full, s[i:], nil
+	return s, "", nil
 }
 
 // scanAttrName returns the next attribute name token verbatim (no prefix stripping).
 func scanAttrName(s string) (name, rest string, err error) {
-	i := 0
-	for i < len(s) {
-		c := s[i]
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
-			c == '>' || c == '/' || c == '=' {
-			break
+	for i := 0; i < len(s); i++ {
+		if nameStop[s[i]] {
+			if i == 0 {
+				return "", s, fmt.Errorf("fastxml: expected name, got %.10q", s)
+			}
+			return s[:i], s[i:], nil
 		}
-		i++
 	}
-	if i == 0 {
+	if len(s) == 0 {
 		return "", s, fmt.Errorf("fastxml: expected name, got %.10q", s)
 	}
-	return s[:i], s[i:], nil
+	return s, "", nil
 }
 
 // scanQuotedString returns the content between ' or " quotes (zero-copy sub-slice).
